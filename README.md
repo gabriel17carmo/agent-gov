@@ -47,33 +47,93 @@ flowchart TD
 - Unknown or unsupported shell syntax passes through unchanged.
 - RTK failure never bypasses classification or governance.
 
-## Quick start
+## Install
 
-The first signed release is intentionally gated on macOS CI and dogfood. To build the public
-preview from source:
+The prebuilt release supports Apple Silicon and Intel Macs. It installs without `sudo` in
+`~/.local/bin`, configures one composed hook for Claude Code and Cursor, and runs diagnostics:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSfL \
+  https://raw.githubusercontent.com/gabriel17carmo/agent-gov/main/install-agent-gov.sh | bash
+```
+
+The script downloads the latest universal binary and its SHA-256 checksum from GitHub Releases. It
+does not install RTK or edit your shell profile. You can
+[inspect the installer](install-agent-gov.sh) before running it. If `~/.local/bin` is not already on
+`PATH`, add this to `~/.zshrc` and open a new terminal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To compose with an existing RTK installation, use the explicit opt-in:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSfL \
+  https://raw.githubusercontent.com/gabriel17carmo/agent-gov/main/install-agent-gov.sh \
+  | bash -s -- --with-rtk
+```
+
+Useful installer options include `--agents claude`, `--agents cursor`, `--bin-dir /absolute/path`,
+`--version v0.1.0`, and `--no-hooks`. Run `bash install-agent-gov.sh --help` for the full list.
+
+### Build from source
+
+This path requires the Rust toolchain declared in `rust-toolchain.toml`:
 
 ```bash
 git clone https://github.com/gabriel17carmo/agent-gov.git
 cd agent-gov
 cargo build --release --locked
+mkdir -p "$HOME/.local/bin"
 install -m 755 target/release/agent-gov "$HOME/.local/bin/agent-gov"
 
-agent-gov install --agents claude,cursor
-agent-gov doctor
+"$HOME/.local/bin/agent-gov" install --agents claude,cursor
+"$HOME/.local/bin/agent-gov" doctor
 ```
 
-To compose with an existing RTK installation:
+To compose a source build with an existing RTK installation:
 
 ```bash
-agent-gov install --agents claude,cursor --with-rtk --rtk "$(command -v rtk)"
-agent-gov doctor
+"$HOME/.local/bin/agent-gov" install --agents claude,cursor --with-rtk --rtk "$(command -v rtk)"
+"$HOME/.local/bin/agent-gov" doctor
 ```
 
-The installer uses the absolute path of the running binary. A multi-agent install is preflighted and
-committed under one install lock, with rollback on failure. It removes a confidently recognized RTK
-rewrite hook only when `--with-rtk` explicitly requests composition, and preserves unrelated hooks.
-Uninstall restores the exact backup when settings are unchanged; otherwise it removes only the
-managed hook. The installer never downloads RTK.
+Both installation paths use the absolute path of the installed binary. A multi-agent install is
+preflighted and committed under one install lock, with rollback on failure. It removes a confidently
+recognized RTK rewrite hook only when `--with-rtk` explicitly requests composition, and preserves
+unrelated hooks. Uninstall restores the exact backup when settings are unchanged; otherwise it
+removes only the managed hook. Neither installer downloads RTK.
+
+## Use
+
+Once the hooks are installed, keep using Claude Code or Cursor normally. You do not prefix build
+commands: recognized heavy shell calls are rewritten before execution and share the global queue.
+
+Check the installation and current workload state:
+
+```bash
+agent-gov doctor
+agent-gov status
+```
+
+Preview how a command will be classified without running it:
+
+```bash
+agent-gov classify -- "cd app && npm run build"
+```
+
+The default capacity is one heavy workload at a time. To allow two after the queue is idle:
+
+```bash
+agent-gov config set-capacity 2 --drain
+```
+
+To remove the managed hooks while preserving unrelated agent settings:
+
+```bash
+agent-gov uninstall --agents claude,cursor
+```
 
 ## Main commands
 

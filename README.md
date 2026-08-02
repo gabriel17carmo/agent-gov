@@ -10,7 +10,7 @@
 Claude Code, Cursor, and [RTK](https://github.com/rtk-ai/rtk), limiting recognized heavy commands
 *before* their process trees are created.
 
-> Status: **public preview (`v0.1.0`)**. The core scheduler, conservative shell rewrite, RTK adapter,
+> Status: **public preview (`v0.1.1`)**. The core scheduler, conservative shell rewrite, RTK adapter,
 > Claude/Cursor adapters, transactional installation, and diagnostics are implemented. Run
 > `agent-gov doctor` after every install. See [compatibility](docs/compatibility.md) before enabling
 > it on a managed workstation.
@@ -79,7 +79,7 @@ curl --proto '=https' --tlsv1.2 -sSfL \
 ```
 
 Useful installer options include `--agents claude`, `--agents cursor`, `--bin-dir /absolute/path`,
-`--version v0.1.0`, and `--no-hooks`. Run `bash install-agent-gov.sh --help` for the full list.
+`--version v0.1.1`, and `--no-hooks`. Run `bash install-agent-gov.sh --help` for the full list.
 
 ### Build from source
 

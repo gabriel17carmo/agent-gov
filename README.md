@@ -69,9 +69,11 @@ agent-gov install --agents claude,cursor --with-rtk --rtk "$(command -v rtk)"
 agent-gov doctor
 ```
 
-The installer uses the absolute path of the running binary. It backs up settings once, writes
-atomically, removes only confidently recognized RTK rewrite hooks, and preserves unrelated hooks.
-It never downloads RTK.
+The installer uses the absolute path of the running binary. A multi-agent install is preflighted and
+committed under one install lock, with rollback on failure. It removes a confidently recognized RTK
+rewrite hook only when `--with-rtk` explicitly requests composition, and preserves unrelated hooks.
+Uninstall restores the exact backup when settings are unchanged; otherwise it removes only the
+managed hook. The installer never downloads RTK.
 
 ## Main commands
 
@@ -163,7 +165,7 @@ Run the local gate:
 ```bash
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --locked
+cargo test --all-targets --all-features --locked
 ```
 
 CI repeats this on Linux and on GitHub-hosted macOS arm64 and Intel runners. Release tags build both

@@ -729,6 +729,8 @@ Resposta observada nas versões atuais do hook RTK:
 
 ```json
 {
+  "continue": true,
+  "permission": "ask",
   "updated_input": {
     "command": "/ABS/agent-gov run --pool heavy --owner 7f2a -- rtk npm test"
   }
@@ -740,7 +742,8 @@ O contrato Cursor muda com mais frequência e deve ser tratado como adapter vers
 - copiar todo `tool_input` quando o schema usar objeto completo;
 - emitir `{}` em pass-through quando exigido;
 - não definir `permission: "allow"` por padrão;
-- mapear ask/deny somente após confirmar o schema da versão;
+- usar `permission: "ask"` para aplicar o rewrite sem elevar a política do host;
+- mapear deny explicitamente após confirmar o schema da versão;
 - recusar enforcement no `doctor` se a versão estiver fora da matriz e o probe end-to-end falhar.
 
 ### 9.3 Política para mudanças de schema

@@ -1,6 +1,7 @@
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
+    os::unix::process::ExitStatusExt,
     process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -107,6 +108,24 @@ fn killed_supervisor_quarantines_its_live_child() {
         .status()
         .expect("recovered workload");
     assert!(recovered.success());
+}
+
+#[test]
+fn termination_signal_is_propagated_after_runtime_cleanup() {
+    let home = configured_home(8);
+    let binary = cargo_bin!("agent-gov");
+    let mut supervisor = governed_sleep(binary, &home, "signal", "5");
+    let metadata_path = home.path().join("runtime/active/slot-0.json");
+    let _ = wait_for_running_metadata(&metadata_path);
+
+    signal::kill(
+        Pid::from_raw(i32::try_from(supervisor.id()).expect("pid")),
+        Signal::SIGTERM,
+    )
+    .expect("terminate supervisor");
+    let status = supervisor.wait().expect("wait supervisor");
+    assert_eq!(status.signal(), Some(Signal::SIGTERM as i32));
+    assert!(!metadata_path.exists(), "permit metadata must be released");
 }
 
 fn configured_home(max_queue: usize) -> TempDir {

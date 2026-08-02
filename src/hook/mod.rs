@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use crate::{
     config::Config,
     error::{GovError, Result},
-    shell::{analyze, rewrite},
+    shell::{analyze, rewrite, rewrite_preserves_structure},
 };
 
 pub use rtk::{RtkDecision, invoke as invoke_rtk};
@@ -65,9 +65,15 @@ pub fn handle(input: &[u8], options: &HookOptions<'_>) -> Result<Vec<u8>> {
     if rtk_enabled && let Some(path) = options.rtk_path.or(options.config.rtk.path.as_deref()) {
         match rtk::invoke(path, original, options.config.rtk.timeout) {
             RtkDecision::Rewrite { command, ask } => {
-                candidate = command;
-                if ask {
-                    permission = RtkDecision::Ask;
+                if rewrite_preserves_structure(
+                    original,
+                    &command,
+                    &options.config.classification.rules,
+                )? {
+                    candidate = command;
+                    if ask {
+                        permission = RtkDecision::Ask;
+                    }
                 }
             }
             RtkDecision::Deny => {
@@ -171,7 +177,13 @@ fn serialize_update(
             }
             json!({"hookSpecificOutput": output})
         }
-        Host::Cursor => json!({"updated_input": updated}),
+        // Cursor only applies `updated_input` when a permission decision is present. `ask`
+        // preserves the host's approval boundary instead of silently elevating the command.
+        Host::Cursor => json!({
+            "continue": true,
+            "permission": "ask",
+            "updated_input": updated
+        }),
     };
     Ok(serde_json::to_vec(&value)?)
 }
@@ -185,7 +197,7 @@ fn serialize_deny(host: Host, reason: &str) -> Result<Vec<u8>> {
                 "permissionDecisionReason": reason
             }
         }),
-        Host::Cursor => json!({"permission": "deny", "message": reason}),
+        Host::Cursor => json!({"continue": false, "permission": "deny", "message": reason}),
     };
     Ok(serde_json::to_vec(&value)?)
 }
@@ -255,5 +267,62 @@ mod tests {
         )
         .expect("handle");
         assert_eq!(output, b"{}");
+    }
+
+    #[test]
+    fn cursor_rewrite_is_applied_without_permission_elevation() {
+        let config = Config::default();
+        let output = handle(
+            br#"{
+                "conversation_id":"c1",
+                "session_id":"s1",
+                "cursor_version":"1.7",
+                "workspace_roots":["/workspace"],
+                "hook_event_name":"preToolUse",
+                "tool_name":"Shell",
+                "tool_input":{"command":"npm test","future":true}
+            }"#,
+            &HookOptions {
+                host: Host::Cursor,
+                binary_path: Path::new("/bin/agent-gov"),
+                rtk_path: None,
+                config: &config,
+            },
+        )
+        .expect("handle");
+        let value: Value = serde_json::from_slice(&output).expect("json");
+        assert_eq!(value["continue"], true);
+        assert_eq!(value["permission"], "ask");
+        assert_eq!(value["updated_input"]["future"], true);
+        assert!(
+            value["updated_input"]["command"]
+                .as_str()
+                .expect("command")
+                .contains("agent-gov")
+        );
+    }
+
+    #[test]
+    fn cursor_background_heavy_command_is_explicitly_denied() {
+        let config = Config::default();
+        let output = handle(
+            br#"{"tool_name":"Shell","tool_input":{"command":"npm test &"}}"#,
+            &HookOptions {
+                host: Host::Cursor,
+                binary_path: Path::new("/bin/agent-gov"),
+                rtk_path: None,
+                config: &config,
+            },
+        )
+        .expect("handle");
+        let value: Value = serde_json::from_slice(&output).expect("json");
+        assert_eq!(value["continue"], false);
+        assert_eq!(value["permission"], "deny");
+        assert!(
+            value["message"]
+                .as_str()
+                .expect("message")
+                .contains("foreground")
+        );
     }
 }

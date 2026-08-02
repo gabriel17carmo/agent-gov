@@ -24,6 +24,7 @@ fn assert_capacity(capacity: u8) {
     let home = TempDir::new().expect("temp home");
     let mut config = Config::default();
     config.scheduler.capacity = capacity;
+    config.scheduler.max_queue = 20;
     config.scheduler.max_wait = Duration::from_secs(10);
     fs::create_dir_all(home.path()).expect("create home");
     fs::write(
@@ -34,7 +35,7 @@ fn assert_capacity(capacity: u8) {
 
     let binary = cargo_bin!("agent-gov");
     let mut children = Vec::new();
-    for index in 0..8 {
+    for index in 0..20 {
         let child = Command::new(binary)
             .args([
                 "run",

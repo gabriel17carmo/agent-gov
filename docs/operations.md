@@ -24,7 +24,8 @@ agent-gov config set-capacity 2 --drain
 ```
 
 The operation blocks new admissions, requires an idle pool, writes the runtime snapshot and config
-atomically, then resumes admission. If it fails while busy, wait for active/waiting work to finish and
+as one transaction, then resumes admission. A failed config write restores the previous runtime
+capacity and the prior drain state. If it fails while busy, wait for active/waiting work to finish and
 retry.
 
 ## Cancellation
@@ -53,5 +54,6 @@ agent-gov status
 agent-gov uninstall --agents claude,cursor
 ```
 
-Uninstall removes only entries matching the current absolute binary path and preserves later user
-changes and the backup files.
+If settings still match the installed snapshot, uninstall restores their exact original bytes (or
+removes a file that did not previously exist). If settings changed later, it removes only the exact
+managed hook and preserves those changes. Backup files remain available for recovery.

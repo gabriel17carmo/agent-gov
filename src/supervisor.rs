@@ -9,12 +9,13 @@ use std::{
 };
 
 use nix::{
-    sys::signal::{self, Signal},
-    unistd::Pid,
+    sys::signal::{self, SigSet, SigmaskHow, Signal},
+    unistd::{Pid, isatty, tcgetpgrp, tcsetpgrp},
 };
 use signal_hook::{
     consts::signal::{SIGINT, SIGQUIT, SIGTERM, SIGWINCH},
     iterator::Signals,
+    low_level::emulate_default_handler,
 };
 
 use crate::{error::Result, scheduler::Permit};
@@ -27,7 +28,22 @@ pub struct SuperviseOptions<'a> {
     pub termination_grace: Duration,
 }
 
-pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<ExitStatus> {
+pub struct SupervisedExit {
+    status: ExitStatus,
+    forwarded_signal: Option<Signal>,
+}
+
+impl SupervisedExit {
+    #[must_use]
+    pub const fn direct(status: ExitStatus) -> Self {
+        Self {
+            status,
+            forwarded_signal: None,
+        }
+    }
+}
+
+pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<SupervisedExit> {
     let mut signals = Signals::new([SIGINT, SIGTERM, SIGQUIT, SIGWINCH])?;
     let mut command = Command::new(options.program);
     command
@@ -42,6 +58,7 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Exit
         child_group,
         armed: true,
     };
+    let _terminal = TerminalForeground::transfer(child_group);
     permit.mark_running(cleanup.child.id(), options.label)?;
     let started = Instant::now();
     let mut terminating: Option<(Instant, Signal)> = None;
@@ -49,7 +66,10 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Exit
     loop {
         if let Some(status) = cleanup.child.try_wait()? {
             cleanup.armed = false;
-            return Ok(status);
+            return Ok(SupervisedExit {
+                status,
+                forwarded_signal: terminating.map(|(_, signal)| signal),
+            });
         }
 
         for raw in signals.pending() {
@@ -78,6 +98,38 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Exit
     }
 }
 
+struct TerminalForeground {
+    original_group: Pid,
+}
+
+impl TerminalForeground {
+    fn transfer(child_group: Pid) -> Option<Self> {
+        let stdin = io::stdin();
+        if !isatty(&stdin).unwrap_or(false) {
+            return None;
+        }
+        let original_group = tcgetpgrp(&stdin).ok()?;
+        set_foreground_group(child_group).ok()?;
+        Some(Self { original_group })
+    }
+}
+
+impl Drop for TerminalForeground {
+    fn drop(&mut self) {
+        let _ = set_foreground_group(self.original_group);
+    }
+}
+
+fn set_foreground_group(group: Pid) -> nix::Result<()> {
+    let mut blocked = SigSet::empty();
+    blocked.add(Signal::SIGTTOU);
+    let mut previous = SigSet::empty();
+    signal::pthread_sigmask(SigmaskHow::SIG_BLOCK, Some(&blocked), Some(&mut previous))?;
+    let result = tcsetpgrp(io::stdin(), group);
+    let restore = signal::pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&previous), None);
+    result.and(restore)
+}
+
 struct ChildCleanup<'a> {
     child: &'a mut Child,
     child_group: Pid,
@@ -98,11 +150,19 @@ pub fn direct(program: &str, args: &[String]) -> io::Result<ExitStatus> {
 }
 
 #[must_use]
-pub fn exit_code(status: ExitStatus) -> i32 {
+pub fn exit_code(outcome: &SupervisedExit) -> i32 {
     use std::os::unix::process::ExitStatusExt;
-    status
-        .code()
-        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
+    if let Some(signal) = outcome
+        .forwarded_signal
+        .map(|signal| signal as i32)
+        .or_else(|| outcome.status.signal())
+    {
+        if let Err(error) = emulate_default_handler(signal) {
+            eprintln!("agent-gov: cannot propagate child signal {signal}: {error}");
+        }
+        return 128 + signal;
+    }
+    outcome.status.code().unwrap_or(1)
 }
 
 #[cfg(test)]

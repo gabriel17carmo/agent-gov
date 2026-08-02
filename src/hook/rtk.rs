@@ -3,8 +3,9 @@ use std::{
     os::unix::process::CommandExt,
     path::Path,
     process::{Command, Stdio},
+    sync::mpsc,
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use nix::{
@@ -23,6 +24,7 @@ pub enum RtkDecision {
 
 #[must_use]
 pub fn invoke(path: &Path, command: &str, timeout: Duration) -> RtkDecision {
+    let started = Instant::now();
     let Ok(mut child) = Command::new(path)
         .arg("rewrite")
         .arg(command)
@@ -36,14 +38,25 @@ pub fn invoke(path: &Path, command: &str, timeout: Duration) -> RtkDecision {
     };
     let stdout = child.stdout.take();
     let child_group = Pid::from_raw(i32::try_from(child.id()).unwrap_or(i32::MAX));
-    let reader = thread::spawn(move || stdout.map_or(Ok(Vec::new()), read_limited));
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let reader = thread::spawn(move || {
+        let _ = sender.send(stdout.map_or(Ok(Vec::new()), read_limited));
+    });
     let Ok(Some(status)) = child.wait_timeout(timeout) else {
-        let _ = signal::killpg(child_group, Signal::SIGKILL);
-        let _ = child.wait();
-        let _ = reader.join();
+        kill_group_and_reap(&mut child, child_group);
+        finish_reader(&receiver, reader, Duration::from_millis(100));
         return RtkDecision::Preserve;
     };
-    let Ok(Ok(output)) = reader.join() else {
+    let remaining = timeout.saturating_sub(started.elapsed());
+    let Ok(result) = receiver.recv_timeout(remaining) else {
+        // A descendant may have inherited stdout after the RTK parent exited. Killing the
+        // process group closes the pipe in the normal case; never join an unbounded reader.
+        let _ = signal::killpg(child_group, Signal::SIGKILL);
+        finish_reader(&receiver, reader, Duration::from_millis(100));
+        return RtkDecision::Preserve;
+    };
+    let _ = reader.join();
+    let Ok(output) = result else {
         return RtkDecision::Preserve;
     };
     let code = status.code().unwrap_or(-1);
@@ -66,6 +79,21 @@ pub fn invoke(path: &Path, command: &str, timeout: Duration) -> RtkDecision {
     RtkDecision::Rewrite {
         command: value.to_owned(),
         ask: code == 3,
+    }
+}
+
+fn kill_group_and_reap(child: &mut std::process::Child, child_group: Pid) {
+    let _ = signal::killpg(child_group, Signal::SIGKILL);
+    let _ = child.wait();
+}
+
+fn finish_reader(
+    receiver: &mpsc::Receiver<io::Result<Vec<u8>>>,
+    reader: thread::JoinHandle<()>,
+    timeout: Duration,
+) {
+    if receiver.recv_timeout(timeout).is_ok() {
+        let _ = reader.join();
     }
 }
 

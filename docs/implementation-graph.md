@@ -26,12 +26,12 @@ flowchart TD
 | A | Current Claude/RTK contracts and runner labels validated; ADRs committed | Complete |
 | B | Tier 0/1 tests, byte-preservation property, idempotence, unsafe background denial | Complete |
 | C | Private runtime, stable lock files, capacity 1/2 validation | Complete |
-| D | Eight-process integration proves concurrency never exceeds 1/2 | Complete |
-| E | Direct argv, inherited I/O, process group, TERM/KILL timeout, status propagation | Complete |
-| F | Missing/hung RTK cannot bypass governor; exits 0/1/2/3 modeled | Complete |
-| G | Unknown fields preserved; Claude permission not elevated; Cursor always valid JSON | Complete |
+| D | Twenty-process integration proves concurrency never exceeds 1/2 | Complete |
+| E | Direct argv, inherited I/O, foreground process group, TERM/KILL timeout, exact signal propagation | Complete |
+| F | Missing/hung/pipe-inherited RTK cannot bypass governor; exits 0/1/2/3 and structural correlation modeled | Complete |
+| G | Unknown fields preserved; Claude permission not elevated; Cursor rewrite uses explicit `ask` | Complete |
 | H | status, cancel-safe refusal, drain/resume, transactional capacity | Complete |
-| I | Idempotent user hooks, absolute paths, backup, surgical uninstall | Complete |
+| I | Idempotent user hooks, install lock, cross-agent rollback, exact restore or surgical uninstall | Complete |
 | J | Linux test gate, clippy, property tests, audit workflows, SBOM workflow | In progress until CI |
 | K | macOS arm64/Intel CI, real Claude/Cursor/RTK dogfood, A/B benchmark | Required for v1.0 |
 

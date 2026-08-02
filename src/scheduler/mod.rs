@@ -265,27 +265,51 @@ pub fn set_drain(runtime: &Runtime, enabled: bool) -> Result<()> {
 }
 
 pub fn set_capacity(runtime: &Runtime, capacity: u8) -> Result<()> {
+    set_capacity_transactional(runtime, capacity, || Ok(()))
+}
+
+pub fn set_capacity_transactional(
+    runtime: &Runtime,
+    capacity: u8,
+    persist: impl FnOnce() -> Result<()>,
+) -> Result<()> {
     if !(1..=2).contains(&capacity) {
         return Err(GovError::InvalidConfig("capacity must be 1 or 2".into()));
     }
     let queue = runtime.open_queue_lock()?;
     runtime::lock(&queue)?;
-    if !runtime.is_draining() {
-        runtime::unlock(&queue)?;
-        return Err(GovError::Temporary(
-            "capacity changes require drain first".into(),
-        ));
+    let result = (|| {
+        if !runtime.is_draining() {
+            return Err(GovError::Temporary(
+                "capacity changes require drain first".into(),
+            ));
+        }
+        if runtime.active_count()? > 0 || !runtime.live_waiters()?.is_empty() {
+            return Err(GovError::Temporary(
+                "capacity changes require an idle pool".into(),
+            ));
+        }
+        let previous = runtime.capacity()?;
+        runtime::write_atomic(
+            &runtime.root().join("capacity"),
+            capacity.to_string().as_bytes(),
+        )?;
+        if let Err(error) = persist() {
+            if let Err(rollback_error) = runtime::write_atomic(
+                &runtime.root().join("capacity"),
+                previous.to_string().as_bytes(),
+            ) {
+                return Err(GovError::Internal(format!(
+                    "configuration write failed ({error}); capacity rollback also failed ({rollback_error})"
+                )));
+            }
+            return Err(error);
+        }
+        Ok(())
+    })();
+    let unlock = runtime::unlock(&queue);
+    match (result, unlock) {
+        (Err(error), _) | (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
     }
-    if runtime.active_count()? > 0 || !runtime.live_waiters()?.is_empty() {
-        runtime::unlock(&queue)?;
-        return Err(GovError::Temporary(
-            "capacity changes require an idle pool".into(),
-        ));
-    }
-    runtime::write_atomic(
-        &runtime.root().join("capacity"),
-        capacity.to_string().as_bytes(),
-    )?;
-    runtime::unlock(&queue)?;
-    Ok(())
 }

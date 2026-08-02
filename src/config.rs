@@ -141,6 +141,16 @@ impl Config {
                 "rtk.timeout must be between 100ms and 2s".into(),
             ));
         }
+        if self
+            .rtk
+            .path
+            .as_deref()
+            .is_some_and(|path| !path.is_absolute())
+        {
+            return Err(GovError::InvalidConfig(
+                "rtk.path must be absolute when configured".into(),
+            ));
+        }
         for rule in &self.classification.rules {
             if rule.id.is_empty() || rule.argv_prefix.is_empty() {
                 return Err(GovError::InvalidConfig(

@@ -11,7 +11,7 @@ use agent_gov::{
     error::{GovError, Result},
     hook::{HookOptions, Host, handle},
     install::{self, Agent},
-    scheduler::{Runtime, Scheduler, set_capacity, set_drain},
+    scheduler::{Runtime, Scheduler, set_capacity_transactional, set_drain},
     shell::analyze,
     status::Status,
     supervisor::{self, SuperviseOptions},
@@ -174,8 +174,9 @@ fn run(args: &RunArgs) -> Result<i32> {
             termination_grace: config.scheduler.termination_grace,
         },
     );
+    drop(permit);
     match status {
-        Ok(status) => Ok(supervisor::exit_code(status)),
+        Ok(status) => Ok(supervisor::exit_code(&status)),
         Err(GovError::Io(error)) => spawn_result(Err(error)),
         Err(error) => Err(error),
     }
@@ -252,10 +253,16 @@ fn status(json: bool) -> Result<i32> {
 }
 
 fn doctor(json: bool) -> Result<i32> {
-    let config = load_safe_config("doctor");
+    let (config, config_error) = match Config::load() {
+        Ok(config) => (config, None),
+        Err(error) => (Config::default(), Some(error.to_string())),
+    };
     let runtime = Runtime::initialize(&config)?;
     let binary = env::current_exe()?;
-    let report = Report::run(&config, &runtime, &binary);
+    let mut report = Report::run(&config, &runtime, &binary);
+    if let Some(error) = config_error {
+        report.record_config_error(error);
+    }
     if json {
         println!("{}", agent_gov::doctor::to_json(&report)?);
     } else {
@@ -342,15 +349,19 @@ fn configure(command: &ConfigCommand) -> Result<i32> {
         ConfigCommand::SetCapacity { capacity, drain } => {
             let mut config = load_safe_config("config");
             let runtime = Runtime::initialize(&config)?;
-            if *drain {
+            let enabled_drain = *drain && !runtime.is_draining();
+            if enabled_drain {
                 set_drain(&runtime, true)?;
             }
-            set_capacity(&runtime, *capacity)?;
             config.scheduler.capacity = *capacity;
-            config.save()?;
-            if *drain {
-                set_drain(&runtime, false)?;
-            }
+            let update = set_capacity_transactional(&runtime, *capacity, || config.save());
+            let resume = if enabled_drain {
+                set_drain(&runtime, false)
+            } else {
+                Ok(())
+            };
+            update?;
+            resume?;
             println!("agent-gov: capacity set to {capacity}");
             Ok(0)
         }
@@ -402,7 +413,9 @@ fn load_safe_config(context: &str) -> Config {
 
 fn spawn_result(result: io::Result<std::process::ExitStatus>) -> Result<i32> {
     match result {
-        Ok(status) => Ok(supervisor::exit_code(status)),
+        Ok(status) => Ok(supervisor::exit_code(
+            &agent_gov::supervisor::SupervisedExit::direct(status),
+        )),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             eprintln!("agent-gov: command not found");
             Ok(127)

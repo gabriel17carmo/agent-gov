@@ -16,7 +16,7 @@ host/shell input passes through unchanged.
 | `shell` | Bash CST with byte spans, conservative rules, insertion-only rewrite |
 | `scheduler` | Stable slot inodes, short queue lock, bounded leases, approximate FIFO |
 | `supervisor` | Inherited I/O, child process group, signals, execution timeout, exact exit mapping |
-| `install` | Absolute paths, backup-once, idempotent JSON patch, atomic writes |
+| `install` | Absolute paths, install lock, cross-agent rollback, exact backup restore or surgical unpatch |
 | `doctor/status` | Read-only, versioned JSON plus concise human output |
 
 ## Admission state
@@ -43,9 +43,11 @@ The parser identifies the byte offset of a simple command's executable. The rewr
 constant prefix at that offset, applying insertions from the largest offset to the smallest. It never
 serializes the shell tree. Removing all inserted prefixes reconstructs the exact candidate input.
 
-RTK is evaluated independently. If the original contains a recognized heavy segment but the RTK
-candidate cannot be correlated to a heavy segment, the candidate is discarded and the original is
-governed.
+RTK is evaluated independently. A candidate is accepted only when each command differs by one added
+`rtk` executable token and its command count, control-operator frame, classifications,
+heavy-command count, and background placement match the original. Candidates involving redirection
+changes are conservatively discarded. A rejected or timed-out candidate never bypasses governance:
+the original command is classified and wrapped.
 
 ## Runtime layout
 

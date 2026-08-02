@@ -71,6 +71,10 @@ impl ActiveMetadata {
 impl Runtime {
     pub fn initialize(config: &Config) -> Result<Self> {
         let root = runtime_dir()?;
+        let app_dir = root
+            .parent()
+            .ok_or_else(|| GovError::Internal("runtime root has no parent".into()))?;
+        create_private_dir_all(app_dir)?;
         create_private_dir(&root)?;
         for child in ["slots", "active", "waiters", "cooldowns"] {
             create_private_dir(&root.join(child))?;
@@ -304,6 +308,27 @@ fn create_private_dir(path: &Path) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+fn create_private_dir_all(path: &Path) -> Result<()> {
+    if path.exists() {
+        return create_private_dir(path);
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| GovError::Internal("private directory has no parent".into()))?;
+    if parent.exists() {
+        let metadata = fs::symlink_metadata(parent)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            return Err(GovError::Runtime(format!(
+                "unsafe parent directory {}",
+                parent.display()
+            )));
+        }
+    } else {
+        create_private_dir_all(parent)?;
+    }
+    create_private_dir(path)
 }
 
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {

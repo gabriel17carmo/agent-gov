@@ -5,6 +5,8 @@ versioning.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-02
+
 ### Added
 
 - Automated version-driven releases with recovery-safe republishing.
@@ -29,5 +31,6 @@ versioning.
 - Transactional hook installation, status, doctor, drain/resume, cancel, and safe capacity changes.
 - Unit, contract, property, and real multi-process concurrency tests.
 
-[Unreleased]: https://github.com/gabriel17carmo/agent-gov/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/gabriel17carmo/agent-gov/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/gabriel17carmo/agent-gov/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gabriel17carmo/agent-gov/releases/tag/v0.1.0

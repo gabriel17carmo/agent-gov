@@ -1,7 +1,10 @@
 use std::{
     fs::{self, DirBuilder, File, OpenOptions},
     io::Write,
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
 };
 
@@ -12,6 +15,7 @@ use nix::{
     unistd::{Pid, Uid},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use sha2::{Digest, Sha256};
 
 use crate::{
     config::{Config, runtime_dir},
@@ -21,6 +25,8 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Runtime {
     root: PathBuf,
+    control_dir: PathBuf,
+    control_namespace: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -76,7 +82,7 @@ impl Runtime {
             .ok_or_else(|| GovError::Internal("runtime root has no parent".into()))?;
         create_private_dir_all(app_dir)?;
         create_private_dir(&root)?;
-        for child in ["slots", "active", "waiters", "cooldowns", "control"] {
+        for child in ["slots", "active", "waiters", "cooldowns"] {
             create_private_dir(&root.join(child))?;
         }
         for path in [
@@ -94,7 +100,12 @@ impl Runtime {
         if !capacity.exists() {
             write_atomic(&capacity, config.scheduler.capacity.to_string().as_bytes())?;
         }
-        let runtime = Self { root };
+        let (control_dir, control_namespace) = initialize_control_namespace(&root)?;
+        let runtime = Self {
+            root,
+            control_dir,
+            control_namespace,
+        };
         runtime.validate()?;
         Ok(runtime)
     }
@@ -151,7 +162,9 @@ impl Runtime {
                 "invalid job id in runtime metadata".into(),
             ));
         }
-        Ok(self.root.join(format!("control/{job_id}.sock")))
+        Ok(self
+            .control_dir
+            .join(format!("{}-{job_id}.sock", self.control_namespace)))
     }
 
     pub fn capacity(&self) -> Result<usize> {
@@ -335,6 +348,24 @@ fn create_private_dir_all(path: &Path) -> Result<()> {
         create_private_dir_all(parent)?;
     }
     create_private_dir(path)
+}
+
+fn initialize_control_namespace(runtime_root: &Path) -> Result<(PathBuf, String)> {
+    let control_dir = PathBuf::from("/tmp").join(format!(
+        "agent-gov-control-{}",
+        Uid::current().as_raw()
+    ));
+    create_private_dir(&control_dir)?;
+
+    let canonical_root = fs::canonicalize(runtime_root)?;
+    let digest = Sha256::digest(canonical_root.as_os_str().as_bytes());
+    let mut namespace = String::with_capacity(16);
+    for byte in &digest[..8] {
+        use std::fmt::Write as _;
+        write!(&mut namespace, "{byte:02x}")
+            .map_err(|_| GovError::Internal("cannot derive control namespace".into()))?;
+    }
+    Ok((control_dir, namespace))
 }
 
 fn validate_parent_dir(path: &Path) -> Result<()> {

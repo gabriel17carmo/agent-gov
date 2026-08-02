@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# The single-quoted strings below are source code for generated test doubles.
+# shellcheck disable=SC2016
 
 set -Eeuo pipefail
 

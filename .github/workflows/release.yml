@@ -22,8 +22,10 @@ jobs:
         with:
           tool: cargo-cyclonedx
       - run: cargo cyclonedx --format json --all
+      - run: test "$(dist/agent-gov --version)" = "agent-gov ${GITHUB_REF_NAME#v}"
       - run: shasum -a 256 dist/agent-gov > dist/agent-gov.sha256
       - run: cp agent-gov.cdx.json dist/agent-gov.cdx.json
+      - run: cp install-agent-gov.sh dist/install-agent-gov.sh
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

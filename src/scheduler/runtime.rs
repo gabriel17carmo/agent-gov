@@ -312,23 +312,31 @@ fn create_private_dir(path: &Path) -> Result<()> {
 
 fn create_private_dir_all(path: &Path) -> Result<()> {
     if path.exists() {
-        return create_private_dir(path);
+        return validate_parent_dir(path);
     }
     let parent = path
         .parent()
         .ok_or_else(|| GovError::Internal("private directory has no parent".into()))?;
     if parent.exists() {
-        let metadata = fs::symlink_metadata(parent)?;
-        if !metadata.is_dir() || metadata.file_type().is_symlink() {
-            return Err(GovError::Runtime(format!(
-                "unsafe parent directory {}",
-                parent.display()
-            )));
-        }
+        validate_parent_dir(parent)?;
     } else {
         create_private_dir_all(parent)?;
     }
     create_private_dir(path)
+}
+
+fn validate_parent_dir(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.is_dir()
+        || metadata.file_type().is_symlink()
+        || metadata.uid() != Uid::current().as_raw()
+    {
+        return Err(GovError::Runtime(format!(
+            "unsafe parent directory {}",
+            path.display()
+        )));
+    }
+    Ok(())
 }
 
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {

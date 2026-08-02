@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  universal-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/build-universal.sh
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+      - run: cargo cyclonedx --format json --all
+      - run: shasum -a 256 dist/agent-gov > dist/agent-gov.sha256
+      - run: cp agent-gov.cdx.json dist/agent-gov.cdx.json
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

@@ -36,15 +36,16 @@ Use the opaque ID from `status`:
 agent-gov cancel a7c2...
 ```
 
-Cancellation resolves exactly one active slot and validates that the supervisor still owns its lock.
-It refuses stale or ambiguous metadata.
+Cancellation resolves exactly one active slot, validates that its lock is held, and sends the
+request through a private per-job Unix socket. It never signals a PID obtained from metadata and
+refuses stale, unavailable, or ambiguous control endpoints.
 
 ## Crash recovery
 
 Kernel locks close automatically when the supervisor dies. If the child remains alive, active
 metadata quarantines that slot. In the public preview, inspect the listed PID before taking manual
-action. Never delete stable slot lock files. A v1.0 repair command will automate identity-verified
-orphan recovery on macOS.
+action. Never delete stable slot lock files. Identity-verified termination of a live orphan remains
+disabled until it is implemented and validated on a physical Mac.
 
 ## Uninstall
 

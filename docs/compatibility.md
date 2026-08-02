@@ -10,6 +10,11 @@
 | RTK | Direct `rtk rewrite`; exits 0/1/2/3; absolute path recommended |
 | Shell | Conservative Bash/POSIX subset parsed with tree-sitter; Zsh-only syntax passes unchanged |
 
+The contract fixtures and documentation links were reviewed on 2026-08-02. GitHub-hosted CI covers
+macOS arm64 and Intel, including a pseudo-TTY. Exact physical-machine versions of Claude Code,
+Cursor, and RTK remain intentionally unclaimed until the dogfood matrix is recorded in
+[release readiness](release-readiness.md).
+
 Authoritative contracts:
 
 - [Claude Code hooks reference](https://code.claude.com/docs/en/hooks)

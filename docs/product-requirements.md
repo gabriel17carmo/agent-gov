@@ -1308,6 +1308,10 @@ Antes de implementar a política final, a Fase 0 deve transformar o baseline em 
 
 ## 17. Critérios de aceite e Definition of Done
 
+O estado atual e as evidências de cada gate são acompanhados em
+[`docs/release-readiness.md`](release-readiness.md). Os itens abaixo continuam como critérios de
+produto; CI verde não substitui os gates que exigem dogfood e benchmark em Mac físico.
+
 O MVP está pronto somente quando todos forem verdadeiros:
 
 - [ ] Claude e Cursor usam um único hook composto em escopo de usuário.

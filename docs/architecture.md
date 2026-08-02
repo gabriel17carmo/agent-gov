@@ -70,10 +70,10 @@ normal operation.
 
 ## Known preview gaps
 
-- TTY foreground process-group transfer still requires real-terminal validation on both Mac
-  architectures; agent hooks normally provide non-interactive pipes.
-- macOS process-start identity is not yet used by `cancel`; cancellation therefore requires both an
-  exact job ID and a currently held slot lock, and refuses ambiguous orphan recovery.
+- TTY foreground process-group transfer is exercised with a pseudo-terminal on both hosted Mac
+  architectures; physical IDE-terminal validation remains required.
+- `cancel` uses a private per-job Unix socket and never signals a PID read from metadata. Automated
+  termination of a live orphan still requires macOS process-start identity and remains disabled.
 - Strict network-filesystem detection is scheduled before v1.0. Use a local Application Support
   directory in the preview.
 - Cursor hook schemas evolve quickly. `doctor` must be run after every Cursor update.

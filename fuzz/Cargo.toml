@@ -1,0 +1,26 @@
+[package]
+name = "agent-gov-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+agent-gov = { path = ".." }
+
+[[bin]]
+name = "shell"
+path = "fuzz_targets/shell.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hook"
+path = "fuzz_targets/hook.rs"
+test = false
+doc = false
+bench = false

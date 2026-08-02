@@ -12,3 +12,7 @@ pass license/advisory checks.
 
 Do not broaden the MVP to root privileges, daemons, remote execution, endpoint-security changes, or
 project-local trusted configuration without an accepted ADR.
+
+Workflow changes must pass `scripts/check-workflows.sh` and `scripts/test-release-plan.sh`. Changes
+to hook payload handling or shell parsing must keep the fuzz targets building; scheduled runs own
+longer fuzz campaigns and must never upload proprietary corpora.

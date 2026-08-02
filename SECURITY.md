@@ -16,3 +16,7 @@ environment variables, transcripts, or corporate security logs.
 
 The project will acknowledge a complete report within five business days and publish a coordinated
 fix and advisory when confirmed.
+
+Release assets include SHA-256 checksums, a CycloneDX SBOM, and GitHub build-provenance attestations.
+Apple Developer ID signing and notarization are not yet available in the public preview; this status
+is tracked explicitly in [release readiness](docs/release-readiness.md).

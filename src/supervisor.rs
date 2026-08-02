@@ -1,8 +1,10 @@
 //! Child-process supervision.
 
 use std::{
-    io,
-    os::unix::process::CommandExt,
+    fs,
+    io::{self, Read},
+    os::unix::{fs::PermissionsExt, net::UnixListener, process::CommandExt},
+    path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
     thread,
     time::{Duration, Instant},
@@ -45,6 +47,7 @@ impl SupervisedExit {
 
 pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<SupervisedExit> {
     let mut signals = Signals::new([SIGINT, SIGTERM, SIGQUIT, SIGWINCH])?;
+    let control = ControlEndpoint::bind(permit.control_path())?;
     let mut command = Command::new(options.program);
     command
         .args(options.args)
@@ -84,6 +87,11 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Supe
             }
         }
 
+        if terminating.is_none() && control.cancellation_requested() {
+            let _ = signal::killpg(child_group, Signal::SIGTERM);
+            terminating = Some((Instant::now(), Signal::SIGTERM));
+        }
+
         if terminating.is_none() && started.elapsed() >= options.max_run {
             eprintln!("agent-gov: execution timeout; terminating workload group");
             let _ = signal::killpg(child_group, Signal::SIGTERM);
@@ -95,6 +103,41 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Supe
             let _ = signal::killpg(child_group, Signal::SIGKILL);
         }
         thread::sleep(Duration::from_millis(25));
+    }
+}
+
+struct ControlEndpoint {
+    listener: UnixListener,
+    path: PathBuf,
+}
+
+impl ControlEndpoint {
+    fn bind(path: &Path) -> Result<Self> {
+        let listener = UnixListener::bind(path)?;
+        let endpoint = Self {
+            listener,
+            path: path.to_owned(),
+        };
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+        endpoint.listener.set_nonblocking(true)?;
+        Ok(endpoint)
+    }
+
+    fn cancellation_requested(&self) -> bool {
+        let Ok((mut stream, _)) = self.listener.accept() else {
+            return false;
+        };
+        if stream.set_nonblocking(true).is_err() {
+            return false;
+        }
+        let mut request = [0_u8; 7];
+        stream.read_exact(&mut request).is_ok() && &request == b"cancel\n"
+    }
+}
+
+impl Drop for ControlEndpoint {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
     }
 }
 

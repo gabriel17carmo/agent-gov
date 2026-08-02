@@ -19,6 +19,13 @@ The release includes:
 - a CycloneDX software bill of materials in `agent-gov.cdx.json`;
 - `install-agent-gov.sh` for the one-line installation path.
 
+The workflow also creates signed GitHub build-provenance attestations. After downloading an asset,
+users with the GitHub CLI can verify its origin:
+
+```bash
+gh attestation verify agent-gov --repo gabriel17carmo/agent-gov
+```
+
 If the version is already published, the automatic run exits without rebuilding it. This makes
 ordinary merges safe and ensures that changing the package version is the explicit release signal.
 Semantic versions with a pre-release suffix, such as `0.2.0-rc.1`, are published as GitHub
@@ -38,3 +45,6 @@ explicit tag must be dispatched from `main`.
 
 Pushing a matching `v*` tag remains supported as an emergency path. The tag must match the package
 version in `Cargo.toml` or the workflow fails before publishing.
+
+Apple Developer ID signing and notarization are intentionally not simulated. They remain a release
+gate until the required certificate and Apple credentials are configured as repository secrets.

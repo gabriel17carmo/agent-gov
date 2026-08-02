@@ -127,10 +127,7 @@ impl ControlEndpoint {
         let Ok((mut stream, _)) = self.listener.accept() else {
             return false;
         };
-        if stream
-            .set_read_timeout(Some(Duration::from_millis(100)))
-            .is_err()
-        {
+        if stream.set_nonblocking(true).is_err() {
             return false;
         }
         let mut request = [0_u8; 7];

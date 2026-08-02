@@ -351,10 +351,8 @@ fn create_private_dir_all(path: &Path) -> Result<()> {
 }
 
 fn initialize_control_namespace(runtime_root: &Path) -> Result<(PathBuf, String)> {
-    let control_dir = PathBuf::from("/tmp").join(format!(
-        "agent-gov-control-{}",
-        Uid::current().as_raw()
-    ));
+    let control_dir =
+        PathBuf::from("/tmp").join(format!("agent-gov-control-{}", Uid::current().as_raw()));
     create_private_dir(&control_dir)?;
 
     let canonical_root = fs::canonicalize(runtime_root)?;

@@ -201,9 +201,7 @@ fn cancellation_never_signals_a_pid_from_stale_metadata() {
         .output()
         .expect("cancel command");
     assert_eq!(cancel.status.code(), Some(75));
-    assert!(
-        String::from_utf8_lossy(&cancel.stderr).contains("control endpoint is unavailable")
-    );
+    assert!(String::from_utf8_lossy(&cancel.stderr).contains("control endpoint is unavailable"));
     fs4::FileExt::unlock(&slot).expect("unlock slot");
 }
 

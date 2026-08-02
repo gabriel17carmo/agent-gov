@@ -29,10 +29,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: nightly
-      - uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
-        with:
-          tool: cargo-fuzz
       - run: rustup override set nightly
+      - run: cargo install cargo-fuzz --locked --version 0.13.2
       - run: cargo fuzz build
       - if: github.event_name != 'pull_request'
         run: cargo fuzz run shell -- -max_total_time=60

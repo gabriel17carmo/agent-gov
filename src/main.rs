@@ -310,9 +310,9 @@ fn cancel(job_id: &str) -> Result<i32> {
     let mut control = UnixStream::connect(control_path).map_err(|_| {
         GovError::Temporary("job control endpoint is unavailable; refusing cancellation".into())
     })?;
-    control.write_all(b"cancel\n").map_err(|_| {
-        GovError::Temporary("job control endpoint rejected cancellation".into())
-    })?;
+    control
+        .write_all(b"cancel\n")
+        .map_err(|_| GovError::Temporary("job control endpoint rejected cancellation".into()))?;
     println!("agent-gov: cancellation requested for {job_id}");
     Ok(0)
 }

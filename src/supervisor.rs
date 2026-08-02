@@ -3,11 +3,7 @@
 use std::{
     fs,
     io::{self, Read},
-    os::unix::{
-        fs::PermissionsExt,
-        net::UnixListener,
-        process::CommandExt,
-    },
+    os::unix::{fs::PermissionsExt, net::UnixListener, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
     thread,

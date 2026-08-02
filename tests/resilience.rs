@@ -15,6 +15,22 @@ use nix::{
 use tempfile::TempDir;
 
 #[test]
+fn first_run_creates_a_missing_application_state_directory() {
+    let home = TempDir::new().expect("temp home");
+    let state = home.path().join("missing/state");
+    let status = Command::new(cargo_bin!("agent-gov"))
+        .args(["run", "--owner", "first-run", "--", "/usr/bin/true"])
+        .env("AGENT_GOV_TEST_HOME", &state)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("first run status");
+
+    assert!(status.success());
+    assert!(state.join("runtime/slots/slot-0.lock").is_file());
+}
+
+#[test]
 fn full_queue_returns_75_without_starting_the_workload() {
     let home = configured_home(1);
     let binary = cargo_bin!("agent-gov");

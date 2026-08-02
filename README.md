@@ -228,9 +228,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features --locked
 ```
 
-CI repeats this on Linux and on GitHub-hosted macOS arm64 and Intel runners. Release tags build both
-macOS architectures, combine a universal binary with `lipo`, publish SHA-256 checksums, and generate
-a CycloneDX SBOM.
+CI repeats this on Linux and on GitHub-hosted macOS arm64 and Intel runners. After CI succeeds on
+`main`, a new version in `Cargo.toml` automatically creates the Git tag and GitHub Release, builds
+both macOS architectures, combines a universal binary with `lipo`, publishes SHA-256 checksums, and
+generates a CycloneDX SBOM. See [the release process](docs/releasing.md) for the normal and recovery
+flows.
 
 ## Documentation
 
@@ -239,6 +241,7 @@ a CycloneDX SBOM.
 - [Compatibility matrix](docs/compatibility.md)
 - [Implementation graph and gates](docs/implementation-graph.md)
 - [Benchmark protocol](docs/benchmark.md)
+- [Release process](docs/releasing.md)
 - [Product requirements](docs/product-requirements.md)
 - [ADRs](docs/adr/)
 

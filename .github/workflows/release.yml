@@ -1,17 +1,132 @@
 name: Release
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to rebuild; leave blank to release the version on main
+        required: false
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  universal-macos:
-    runs-on: macos-15
+  plan:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      source-sha: ${{ steps.release.outputs.source-sha }}
+      tag: ${{ steps.release.outputs.tag }}
+      tag-exists: ${{ steps.release.outputs.tag-exists }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: >-
+            ${{ github.event_name == 'push' && github.ref ||
+            (github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag) ||
+            (github.event_name == 'workflow_run' && github.event.workflow_run.head_sha) ||
+            github.sha }}
+      - id: release
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          SELECTED_REF: ${{ github.ref_name }}
+        run: |
+          version=$(awk '
+            $0 == "[package]" { in_package = 1; next }
+            in_package && /^\[/ { exit }
+            in_package && /^version = "/ {
+              sub(/^version = "/, "")
+              sub(/"$/, "")
+              print
+              exit
+            }
+          ' Cargo.toml)
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Cargo.toml package version is not valid SemVer: $version" >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          if [[ -n "$REQUESTED_TAG" && "$REQUESTED_TAG" != "$tag" ]]; then
+            echo "Requested tag $REQUESTED_TAG does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -z "$REQUESTED_TAG" && "$SELECTED_REF" != "$DEFAULT_BRANCH" ]]; then
+            echo "New releases must be dispatched from $DEFAULT_BRANCH" >&2
+            exit 1
+          fi
+
+          source_sha=$(git rev-parse HEAD)
+          tag_exists=false
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            tag_exists=true
+            git fetch --force --no-tags origin "refs/tags/$tag:refs/tags/$tag"
+            source_sha=$(git rev-list -n 1 "$tag")
+          fi
+
+          release_exists=false
+          if gh release view "$tag" >/dev/null 2>&1; then
+            release_exists=true
+          fi
+
+          publish=true
+          if [[ "$EVENT_NAME" == "workflow_run" && "$release_exists" == "true" ]]; then
+            publish=false
+          fi
+
+          {
+            echo "publish=$publish"
+            echo "source-sha=$source_sha"
+            echo "tag=$tag"
+            echo "tag-exists=$tag_exists"
+            echo "prerelease=$prerelease"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ "$publish" == "true" ]]; then
+            echo "Publishing $tag from $source_sha"
+          else
+            echo "$tag is already published; nothing to do"
+          fi
+
+  universal-macos:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.source-sha }}
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.97.1
@@ -22,15 +137,28 @@ jobs:
         with:
           tool: cargo-cyclonedx
       - run: cargo cyclonedx --format json --all
-      - run: test "$(dist/agent-gov --version)" = "agent-gov ${GITHUB_REF_NAME#v}"
+      - run: test "$(dist/agent-gov --version)" = "agent-gov ${{ needs.plan.outputs.version }}"
       - run: shasum -a 256 dist/agent-gov > dist/agent-gov.sha256
       - run: cp agent-gov.cdx.json dist/agent-gov.cdx.json
       - run: cp install-agent-gov.sh dist/install-agent-gov.sh
       - env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source-sha }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          TAG_EXISTS: ${{ needs.plan.outputs.tag-exists }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
+            release_flags=()
+            if [[ "$PRERELEASE" == "true" ]]; then
+              release_flags+=(--prerelease)
+            fi
+
+            if [[ "$TAG_EXISTS" == "true" ]]; then
+              gh release create "$TAG" dist/* --generate-notes --verify-tag --title "Agent Governor $TAG" "${release_flags[@]}"
+            else
+              gh release create "$TAG" dist/* --generate-notes --target "$SOURCE_SHA" --title "Agent Governor $TAG" "${release_flags[@]}"
+            fi
           fi

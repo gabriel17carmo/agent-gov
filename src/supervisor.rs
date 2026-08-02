@@ -2,7 +2,7 @@
 
 use std::{
     fs,
-    io::{self, Read},
+    io::Read,
     os::unix::{fs::PermissionsExt, net::UnixListener, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
@@ -87,7 +87,7 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Supe
             }
         }
 
-        if terminating.is_none() && control.cancellation_requested()? {
+        if terminating.is_none() && control.cancellation_requested() {
             let _ = signal::killpg(child_group, Signal::SIGTERM);
             terminating = Some((Instant::now(), Signal::SIGTERM));
         }
@@ -123,30 +123,18 @@ impl ControlEndpoint {
         Ok(endpoint)
     }
 
-    fn cancellation_requested(&self) -> Result<bool> {
-        let mut stream = match self.listener.accept() {
-            Ok((stream, _)) => stream,
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(false),
-            Err(error) => return Err(error.into()),
+    fn cancellation_requested(&self) -> bool {
+        let Ok((mut stream, _)) = self.listener.accept() else {
+            return false;
         };
-        stream.set_read_timeout(Some(Duration::from_millis(100)))?;
-        let mut request = [0_u8; 7];
-        match stream.read_exact(&mut request) {
-            Ok(_) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::WouldBlock
-                        | io::ErrorKind::TimedOut
-                        | io::ErrorKind::UnexpectedEof
-                        | io::ErrorKind::ConnectionReset
-                ) =>
-            {
-                return Ok(false);
-            }
-            Err(_) => return Ok(false),
+        if stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .is_err()
+        {
+            return false;
         }
-        Ok(&request == b"cancel\n")
+        let mut request = [0_u8; 7];
+        stream.read_exact(&mut request).is_ok() && &request == b"cancel\n"
     }
 }
 

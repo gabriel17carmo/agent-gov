@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/gabriel17carmo/agent-gov/security/advisories/new
+    about: Report command injection, lock bypass, unsafe cancellation, or sensitive-data leakage privately.

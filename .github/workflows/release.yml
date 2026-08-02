@@ -36,7 +36,7 @@ jobs:
       prerelease: ${{ steps.release.outputs.prerelease }}
       version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           ref: >-
@@ -46,94 +46,32 @@ jobs:
             github.sha }}
       - id: release
         env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-          SELECTED_REF: ${{ github.ref_name }}
-        run: |
-          version=$(awk '
-            $0 == "[package]" { in_package = 1; next }
-            in_package && /^\[/ { exit }
-            in_package && /^version = "/ {
-              sub(/^version = "/, "")
-              sub(/"$/, "")
-              print
-              exit
-            }
-          ' Cargo.toml)
-
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Cargo.toml package version is not valid SemVer: $version" >&2
-            exit 1
-          fi
-
-          tag="v$version"
-          prerelease=false
-          if [[ "$version" == *-* ]]; then
-            prerelease=true
-          fi
-
-          if [[ -n "$REQUESTED_TAG" && "$REQUESTED_TAG" != "$tag" ]]; then
-            echo "Requested tag $REQUESTED_TAG does not match Cargo.toml version $version" >&2
-            exit 1
-          fi
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && -z "$REQUESTED_TAG" && "$SELECTED_REF" != "$DEFAULT_BRANCH" ]]; then
-            echo "New releases must be dispatched from $DEFAULT_BRANCH" >&2
-            exit 1
-          fi
-
-          source_sha=$(git rev-parse HEAD)
-          tag_exists=false
-          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
-            tag_exists=true
-            git fetch --force --no-tags origin "refs/tags/$tag:refs/tags/$tag"
-            source_sha=$(git rev-list -n 1 "$tag")
-          fi
-
-          release_exists=false
-          if gh release view "$tag" >/dev/null 2>&1; then
-            release_exists=true
-          fi
-
-          publish=true
-          if [[ "$EVENT_NAME" == "workflow_run" && "$release_exists" == "true" ]]; then
-            publish=false
-          fi
-
-          {
-            echo "publish=$publish"
-            echo "source-sha=$source_sha"
-            echo "tag=$tag"
-            echo "tag-exists=$tag_exists"
-            echo "prerelease=$prerelease"
-            echo "version=$version"
-          } >> "$GITHUB_OUTPUT"
-
-          if [[ "$publish" == "true" ]]; then
-            echo "Publishing $tag from $source_sha"
-          else
-            echo "$tag is already published; nothing to do"
-          fi
+          RELEASE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_EVENT_NAME: ${{ github.event_name }}
+          RELEASE_REQUESTED_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          RELEASE_SELECTED_REF: ${{ github.ref_name }}
+        run: scripts/release-plan.sh
 
   universal-macos:
     needs: plan
     if: needs.plan.outputs.publish == 'true'
     runs-on: macos-15
     permissions:
+      attestations: write
       contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.source-sha }}
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: 1.97.1
           targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - run: scripts/build-universal.sh
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
         with:
           tool: cargo-cyclonedx
       - run: cargo cyclonedx --format json --all
@@ -141,6 +79,10 @@ jobs:
       - run: shasum -a 256 dist/agent-gov > dist/agent-gov.sha256
       - run: cp agent-gov.cdx.json dist/agent-gov.cdx.json
       - run: cp install-agent-gov.sh dist/install-agent-gov.sh
+      - name: Attest release provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: dist/*
       - env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.plan.outputs.source-sha }}

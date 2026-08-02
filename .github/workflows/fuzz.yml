@@ -1,0 +1,47 @@
+name: Fuzz
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/fuzz.yml
+      - Cargo.lock
+      - Cargo.toml
+      - fuzz/**
+      - src/hook/**
+      - src/shell/**
+  schedule:
+    - cron: "31 5 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  parser-and-hooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: nightly
+      - uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
+        with:
+          tool: cargo-fuzz
+      - run: cargo fuzz build
+      - if: github.event_name != 'pull_request'
+        run: cargo fuzz run shell -- -max_total_time=60
+      - if: github.event_name != 'pull_request'
+        run: cargo fuzz run hook -- -max_total_time=60
+      - name: Preserve crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crashes-${{ github.run_id }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 7

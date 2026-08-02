@@ -29,6 +29,7 @@ pub struct Permit {
     slot: usize,
     lock: File,
     active_path: PathBuf,
+    control_path: PathBuf,
     job_id: String,
     owner: String,
 }
@@ -42,6 +43,11 @@ impl Permit {
     #[must_use]
     pub fn job_id(&self) -> &str {
         &self.job_id
+    }
+
+    #[must_use]
+    pub fn control_path(&self) -> &std::path::Path {
+        &self.control_path
     }
 
     pub fn mark_starting(&self) -> Result<()> {
@@ -64,6 +70,7 @@ impl Permit {
 impl Drop for Permit {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.active_path);
+        let _ = fs::remove_file(&self.control_path);
         let _ = runtime::unlock(&self.lock);
     }
 }
@@ -156,11 +163,13 @@ impl Scheduler {
             }
             let lock = self.runtime.open_slot(slot)?;
             if runtime::try_lock(&lock)? {
+                let job_id = random_id();
                 return Ok(Some(Permit {
                     slot,
                     lock,
                     active_path: self.runtime.active_path(slot),
-                    job_id: random_id(),
+                    control_path: self.runtime.control_path(&job_id)?,
+                    job_id,
                     owner: owner.to_owned(),
                 }));
             }

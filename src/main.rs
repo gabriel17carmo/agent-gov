@@ -1,6 +1,7 @@
 use std::{
     env,
     io::{self, Read, Write},
+    os::unix::net::UnixStream,
     path::PathBuf,
     process,
 };
@@ -17,10 +18,6 @@ use agent_gov::{
     supervisor::{self, SuperviseOptions},
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use nix::{
-    sys::signal::{self, Signal},
-    unistd::Pid,
-};
 
 #[derive(Debug, Parser)]
 #[command(name = "agent-gov", version, about)]
@@ -304,16 +301,18 @@ fn cancel(job_id: &str) -> Result<i32> {
         )));
     }
     let (slot, metadata) = &matches[0];
-    if !runtime.slot_locked(*slot)? || !agent_gov::scheduler::process_alive(metadata.supervisor_pid)
-    {
+    if !runtime.slot_locked(*slot)? {
         return Err(GovError::Temporary(
-            "job identity is stale or ambiguous; refusing to signal".into(),
+            "job identity is stale or ambiguous; refusing cancellation".into(),
         ));
     }
-    let pid = i32::try_from(metadata.supervisor_pid)
-        .map_err(|_| GovError::Internal("invalid supervisor pid".into()))?;
-    signal::kill(Pid::from_raw(pid), Signal::SIGTERM)
-        .map_err(|error| GovError::Runtime(format!("cannot signal supervisor: {error}")))?;
+    let control_path = runtime.control_path(&metadata.job_id)?;
+    let mut control = UnixStream::connect(control_path).map_err(|_| {
+        GovError::Temporary("job control endpoint is unavailable; refusing cancellation".into())
+    })?;
+    control.write_all(b"cancel\n").map_err(|_| {
+        GovError::Temporary("job control endpoint rejected cancellation".into())
+    })?;
     println!("agent-gov: cancellation requested for {job_id}");
     Ok(0)
 }

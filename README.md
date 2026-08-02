@@ -1,5 +1,9 @@
 # Agent Governor
 
+[![CI](https://github.com/gabriel17carmo/agent-gov/actions/workflows/ci.yml/badge.svg)](https://github.com/gabriel17carmo/agent-gov/actions/workflows/ci.yml)
+[![Security](https://github.com/gabriel17carmo/agent-gov/actions/workflows/security.yml/badge.svg)](https://github.com/gabriel17carmo/agent-gov/actions/workflows/security.yml)
+[![Release](https://img.shields.io/github/v/release/gabriel17carmo/agent-gov)](https://github.com/gabriel17carmo/agent-gov/releases/latest)
+
 **Keep your Mac responsive while multiple coding agents build, test, and install dependencies.**
 
 `agent-gov` is a small native workload governor for local AI coding agents. It composes with
@@ -54,7 +58,7 @@ The prebuilt release supports Apple Silicon and Intel Macs. It installs without 
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSfL \
-  https://raw.githubusercontent.com/gabriel17carmo/agent-gov/main/install-agent-gov.sh | bash
+  https://github.com/gabriel17carmo/agent-gov/releases/latest/download/install-agent-gov.sh | bash
 ```
 
 The script downloads the latest universal binary and its SHA-256 checksum from GitHub Releases. It
@@ -70,7 +74,7 @@ To compose with an existing RTK installation, use the explicit opt-in:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSfL \
-  https://raw.githubusercontent.com/gabriel17carmo/agent-gov/main/install-agent-gov.sh \
+  https://github.com/gabriel17carmo/agent-gov/releases/latest/download/install-agent-gov.sh \
   | bash -s -- --with-rtk
 ```
 
@@ -240,6 +244,7 @@ flows.
 - [Operations and recovery](docs/operations.md)
 - [Compatibility matrix](docs/compatibility.md)
 - [Implementation graph and gates](docs/implementation-graph.md)
+- [Release readiness and evidence](docs/release-readiness.md)
 - [Benchmark protocol](docs/benchmark.md)
 - [Release process](docs/releasing.md)
 - [Product requirements](docs/product-requirements.md)

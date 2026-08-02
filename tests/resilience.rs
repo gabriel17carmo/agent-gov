@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    fs::{self, OpenOptions},
     os::unix::fs::PermissionsExt,
     os::unix::process::ExitStatusExt,
     process::{Command, Stdio},
@@ -126,6 +126,87 @@ fn termination_signal_is_propagated_after_runtime_cleanup() {
     let status = supervisor.wait().expect("wait supervisor");
     assert_eq!(status.signal(), Some(Signal::SIGTERM as i32));
     assert!(!metadata_path.exists(), "permit metadata must be released");
+}
+
+#[test]
+fn cancellation_uses_the_private_job_control_endpoint() {
+    let home = configured_home(8);
+    let binary = cargo_bin!("agent-gov");
+    let mut supervisor = governed_sleep(binary, &home, "cancel", "5");
+    let metadata_path = home.path().join("runtime/active/slot-0.json");
+    let metadata = wait_for_running_metadata(&metadata_path);
+    let control_path = home
+        .path()
+        .join(format!("runtime/control/{}.sock", metadata.job_id));
+    wait_for_path(&control_path);
+
+    let cancel = Command::new(binary)
+        .args(["cancel", &metadata.job_id])
+        .env("AGENT_GOV_TEST_HOME", home.path())
+        .output()
+        .expect("cancel command");
+    assert!(
+        cancel.status.success(),
+        "cancel failed: {}",
+        String::from_utf8_lossy(&cancel.stderr)
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        if let Some(status) = supervisor.try_wait().expect("poll supervisor") {
+            break status;
+        }
+        assert!(Instant::now() < deadline, "cancelled job did not stop");
+        thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(status.signal(), Some(Signal::SIGTERM as i32));
+    assert!(!metadata_path.exists());
+    assert!(!control_path.exists());
+}
+
+#[test]
+fn cancellation_never_signals_a_pid_from_stale_metadata() {
+    let home = configured_home(8);
+    let binary = cargo_bin!("agent-gov");
+    let initialized = Command::new(binary)
+        .args(["run", "--owner", "init", "--", "/usr/bin/true"])
+        .env("AGENT_GOV_TEST_HOME", home.path())
+        .status()
+        .expect("initialize runtime");
+    assert!(initialized.success());
+
+    let slot_path = home.path().join("runtime/slots/slot-0.lock");
+    let slot = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(slot_path)
+        .expect("open slot");
+    fs4::FileExt::lock(&slot).expect("lock slot");
+
+    let job_id = "0123456789abcdef";
+    let metadata = ActiveMetadata::running(
+        job_id,
+        "stale",
+        std::process::id(),
+        std::process::id(),
+        "heavy",
+    );
+    fs::write(
+        home.path().join("runtime/active/slot-0.json"),
+        serde_json::to_vec(&metadata).expect("serialize metadata"),
+    )
+    .expect("write metadata");
+
+    let cancel = Command::new(binary)
+        .args(["cancel", job_id])
+        .env("AGENT_GOV_TEST_HOME", home.path())
+        .output()
+        .expect("cancel command");
+    assert_eq!(cancel.status.code(), Some(75));
+    assert!(
+        String::from_utf8_lossy(&cancel.stderr).contains("control endpoint is unavailable")
+    );
+    fs4::FileExt::unlock(&slot).expect("unlock slot");
 }
 
 fn configured_home(max_queue: usize) -> TempDir {

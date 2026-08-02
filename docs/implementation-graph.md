@@ -32,7 +32,7 @@ flowchart TD
 | G | Unknown fields preserved; Claude permission not elevated; Cursor rewrite uses explicit `ask` | Complete |
 | H | status, cancel-safe refusal, drain/resume, transactional capacity | Complete |
 | I | Idempotent user hooks, install lock, cross-agent rollback, exact restore or surgical uninstall | Complete |
-| J | Linux test gate, clippy, property tests, audit workflows, SBOM workflow | In progress until CI |
+| J | Linux test gate, clippy, property/fuzz tests, audit workflows, SBOM and provenance workflow | Complete |
 | K | macOS arm64/Intel CI, real Claude/Cursor/RTK dogfood, A/B benchmark | Required for v1.0 |
 
 ## Requirement traceability
@@ -40,5 +40,6 @@ flowchart TD
 Each pull request should list the FR/NFR IDs it changes. The initial implementation covers the core
 of FR-001–015, FR-020–034, FR-040–055, FR-057–068, and the performance/security constraints that can
 be verified without a target Mac. Requirements involving host-version probes, TTY behavior, process
-start identity, 24-hour stress, signing/notarization, and real endpoint measurements remain release
-gates rather than simulated claims.
+start identity for live-orphan repair, 24-hour stress, signing/notarization, and real endpoint
+measurements remain release gates rather than simulated claims. Current evidence and external
+blockers are tracked in [release readiness](release-readiness.md).

@@ -76,7 +76,7 @@ impl Runtime {
             .ok_or_else(|| GovError::Internal("runtime root has no parent".into()))?;
         create_private_dir_all(app_dir)?;
         create_private_dir(&root)?;
-        for child in ["slots", "active", "waiters", "cooldowns"] {
+        for child in ["slots", "active", "waiters", "cooldowns", "control"] {
             create_private_dir(&root.join(child))?;
         }
         for path in [
@@ -145,6 +145,15 @@ impl Runtime {
         self.root.join(format!("active/slot-{slot}.json"))
     }
 
+    pub fn control_path(&self, job_id: &str) -> Result<PathBuf> {
+        if job_id.len() != 16 || !job_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(GovError::Runtime(
+                "invalid job id in runtime metadata".into(),
+            ));
+        }
+        Ok(self.root.join(format!("control/{job_id}.sock")))
+    }
+
     pub fn capacity(&self) -> Result<usize> {
         let value = fs::read_to_string(self.root.join("capacity"))?;
         let capacity: usize = value
@@ -197,6 +206,9 @@ impl Runtime {
         };
         if process_alive(metadata.supervisor_pid) || metadata.child_pid.is_some_and(process_alive) {
             return Ok(true);
+        }
+        if let Ok(control_path) = self.control_path(&metadata.job_id) {
+            let _ = fs::remove_file(control_path);
         }
         fs::remove_file(path)?;
         Ok(false)

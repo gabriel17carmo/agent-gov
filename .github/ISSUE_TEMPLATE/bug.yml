@@ -5,7 +5,9 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Do not include proprietary commands, environment variables, transcripts, or endpoint logs.
+      value: >-
+        Do not include proprietary commands, environment variables, transcripts, or endpoint logs.
+        Report security vulnerabilities privately through the repository Security tab.
   - type: input
     id: version
     attributes:

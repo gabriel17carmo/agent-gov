@@ -23,6 +23,7 @@ The workflow also creates signed GitHub build-provenance attestations. After dow
 users with the GitHub CLI can verify its origin:
 
 ```bash
+shasum -a 256 --check agent-gov.sha256
 gh attestation verify agent-gov --repo gabriel17carmo/agent-gov
 ```
 

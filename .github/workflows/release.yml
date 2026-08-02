@@ -76,7 +76,11 @@ jobs:
           tool: cargo-cyclonedx
       - run: cargo cyclonedx --format json --all
       - run: test "$(dist/agent-gov --version)" = "agent-gov ${{ needs.plan.outputs.version }}"
-      - run: shasum -a 256 dist/agent-gov > dist/agent-gov.sha256
+      - name: Create and verify checksum
+        working-directory: dist
+        run: |
+          shasum -a 256 agent-gov > agent-gov.sha256
+          shasum -a 256 --check agent-gov.sha256
       - run: cp agent-gov.cdx.json dist/agent-gov.cdx.json
       - run: cp install-agent-gov.sh dist/install-agent-gov.sh
       - name: Attest release provenance

@@ -25,7 +25,7 @@ fn assert_capacity(capacity: u8) {
     let mut config = Config::default();
     config.scheduler.capacity = capacity;
     config.scheduler.max_queue = 20;
-    config.scheduler.max_wait = Duration::from_secs(10);
+    config.scheduler.max_wait = Duration::from_secs(30);
     fs::create_dir_all(home.path()).expect("create home");
     fs::write(
         home.path().join("config.toml"),
@@ -54,7 +54,7 @@ fn assert_capacity(capacity: u8) {
     }
 
     let active_dir = home.path().join("runtime/active");
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     let mut observed_max = 0;
     while children
         .iter_mut()

@@ -3,7 +3,7 @@
 use std::{
     io,
     os::unix::process::CommandExt,
-    process::{Command, ExitStatus},
+    process::{Child, Command, ExitStatus},
     thread,
     time::{Duration, Instant},
 };
@@ -28,6 +28,7 @@ pub struct SuperviseOptions<'a> {
 }
 
 pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<ExitStatus> {
+    let mut signals = Signals::new([SIGINT, SIGTERM, SIGQUIT, SIGWINCH])?;
     let mut command = Command::new(options.program);
     command
         .args(options.args)
@@ -35,14 +36,19 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Exit
         .env("AGENT_GOV_JOB_ID", permit.job_id())
         .process_group(0);
     let mut child = command.spawn()?;
-    permit.mark_running(child.id(), options.label)?;
     let child_group = Pid::from_raw(i32::try_from(child.id()).unwrap_or(i32::MAX));
-    let mut signals = Signals::new([SIGINT, SIGTERM, SIGQUIT, SIGWINCH])?;
+    let mut cleanup = ChildCleanup {
+        child: &mut child,
+        child_group,
+        armed: true,
+    };
+    permit.mark_running(cleanup.child.id(), options.label)?;
     let started = Instant::now();
     let mut terminating: Option<(Instant, Signal)> = None;
 
     loop {
-        if let Some(status) = child.try_wait()? {
+        if let Some(status) = cleanup.child.try_wait()? {
+            cleanup.armed = false;
             return Ok(status);
         }
 
@@ -72,6 +78,21 @@ pub fn supervise(permit: &Permit, options: &SuperviseOptions<'_>) -> Result<Exit
     }
 }
 
+struct ChildCleanup<'a> {
+    child: &'a mut Child,
+    child_group: Pid,
+    armed: bool,
+}
+
+impl Drop for ChildCleanup<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = signal::killpg(self.child_group, Signal::SIGKILL);
+            let _ = self.child.wait();
+        }
+    }
+}
+
 pub fn direct(program: &str, args: &[String]) -> io::Result<ExitStatus> {
     Command::new(program).args(args).status()
 }
@@ -82,4 +103,27 @@ pub fn exit_code(status: ExitStatus) -> i32 {
     status
         .code()
         .unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_guard_kills_and_reaps_a_started_process_group() {
+        let mut child = Command::new("/bin/sleep")
+            .arg("5")
+            .process_group(0)
+            .spawn()
+            .expect("spawn sleep");
+        let child_group = Pid::from_raw(i32::try_from(child.id()).expect("child pid"));
+        {
+            let _cleanup = ChildCleanup {
+                child: &mut child,
+                child_group,
+                armed: true,
+            };
+        }
+        assert!(child.try_wait().expect("poll child").is_some());
+    }
 }

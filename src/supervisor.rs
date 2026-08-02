@@ -130,20 +130,23 @@ impl ControlEndpoint {
             Err(error) => return Err(error.into()),
         };
         stream.set_read_timeout(Some(Duration::from_millis(100)))?;
-        let mut request = Vec::new();
-        match stream.by_ref().take(16).read_to_end(&mut request) {
+        let mut request = [0_u8; 7];
+        match stream.read_exact(&mut request) {
             Ok(_) => {}
             Err(error)
                 if matches!(
                     error.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::UnexpectedEof
+                        | io::ErrorKind::ConnectionReset
                 ) =>
             {
                 return Ok(false);
             }
-            Err(error) => return Err(error.into()),
+            Err(_) => return Ok(false),
         }
-        Ok(request == b"cancel\n")
+        Ok(&request == b"cancel\n")
     }
 }
 

@@ -11,6 +11,20 @@ agent-gov status
 
 `doctor` exits `0` when healthy, `1` for warnings, and `2` when enforcement cannot be trusted.
 
+## Runtime filesystem policy
+
+On macOS, keep the runtime at the default local path under
+`~/Library/Application Support/agent-gov`. Before scheduler admission, Agent Governor asks the
+kernel whether the containing filesystem has `MNT_LOCAL`. Volumes without that flag—including normal
+SMB, NFS, WebDAV, and user-space network mounts—are rejected with exit `69` (`EX_UNAVAILABLE`), and
+the workload is not started. Local APFS/HFS volumes and local external disks remain supported when
+macOS marks them local.
+
+`agent-gov doctor` reports the filesystem type and locality decision. If it reports a non-local
+runtime, move the state back to the default local Application Support path; do not bypass the
+governor or place its stable lock files on a share. The policy trusts the macOS kernel's mount flag,
+so unusual third-party filesystems should also be validated on a physical Mac before production use.
+
 ## Queue pressure
 
 Queue full or wait timeout returns exit 75 and does not start the workload. Agents should wait for

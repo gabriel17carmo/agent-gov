@@ -18,7 +18,7 @@ use crate::{
     error::{GovError, Result},
 };
 
-pub use runtime::{ActiveMetadata, Runtime, process_alive};
+pub use runtime::{ActiveMetadata, FilesystemStatus, Runtime, process_alive};
 
 pub fn write_private_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     runtime::write_atomic(path, bytes)

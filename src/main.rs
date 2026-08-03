@@ -254,9 +254,14 @@ fn doctor(json: bool) -> Result<i32> {
         Ok(config) => (config, None),
         Err(error) => (Config::default(), Some(error.to_string())),
     };
-    let runtime = Runtime::initialize(&config)?;
+    let filesystem = Runtime::filesystem_status()?;
+    let runtime = if filesystem.supported() {
+        Some(Runtime::initialize(&config)?)
+    } else {
+        None
+    };
     let binary = env::current_exe()?;
-    let mut report = Report::run(&config, &runtime, &binary);
+    let mut report = Report::run(&config, runtime.as_ref(), &filesystem, &binary);
     if let Some(error) = config_error {
         report.record_config_error(error);
     }

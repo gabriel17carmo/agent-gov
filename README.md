@@ -177,6 +177,10 @@ macOS configuration lives at:
 ~/Library/Application Support/agent-gov/config.toml
 ```
 
+Runtime state lives beside this file and must remain on a volume that macOS marks local. Non-local
+runtime filesystems are rejected before scheduler admission; use `agent-gov doctor` to inspect the
+decision.
+
 Example:
 
 ```toml

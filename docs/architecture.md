@@ -66,7 +66,11 @@ the original command is classified and wrapped.
 ```
 
 Directories are `0700`; files are `0600`. Slot files are created once and never rotated during
-normal operation.
+normal operation. On macOS, the runtime is supported only when `statfs(2)` reports `MNT_LOCAL` for
+the runtime path (or its nearest existing ancestor during first-run creation). This kernel property,
+not a filesystem-name allowlist, is the admission boundary. Agent Governor checks it before creating
+scheduler state and again after creating the runtime directory. A missing `MNT_LOCAL` flag fails
+closed before any recognized heavy workload starts.
 
 ## Known preview gaps
 
@@ -74,6 +78,4 @@ normal operation.
   architectures; physical IDE-terminal validation remains required.
 - `cancel` uses a private per-job Unix socket and never signals a PID read from metadata. Automated
   termination of a live orphan still requires macOS process-start identity and remains disabled.
-- Strict network-filesystem detection is scheduled before v1.0. Use a local Application Support
-  directory in the preview.
 - Cursor hook schemas evolve quickly. `doctor` must be run after every Cursor update.

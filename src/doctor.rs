@@ -17,7 +17,7 @@ use crate::{
         Agent, installed_binary_path, managed_hook_count, managed_rtk_paths,
         separate_rtk_hook_count, settings_path,
     },
-    scheduler::Runtime,
+    scheduler::{FilesystemStatus, Runtime},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -44,42 +44,64 @@ pub struct Report {
 
 impl Report {
     #[must_use]
-    pub fn run(config: &Config, runtime: &Runtime, binary: &Path) -> Self {
+    pub fn run(
+        config: &Config,
+        runtime: Option<&Runtime>,
+        filesystem: &FilesystemStatus,
+        binary: &Path,
+    ) -> Self {
         let mut checks = Vec::new();
         checks.push(check(
             "binary",
             Severity::Ok,
             format!("agent-gov {VERSION} ({})", std::env::consts::ARCH),
         ));
-        checks.push(match runtime.validate() {
-            Ok(()) => check(
-                "runtime",
-                Severity::Ok,
-                format!("{} has private permissions", runtime.root().display()),
-            ),
-            Err(error) => check("runtime", Severity::Error, error.to_string()),
-        });
-        checks.push(match runtime.capacity() {
-            Ok(capacity @ 1..=2) if capacity == usize::from(config.scheduler.capacity) => check(
-                "capacity",
-                Severity::Ok,
-                format!("configured and applied capacity is {capacity}"),
-            ),
-            Ok(capacity @ 1..=2) => check(
-                "capacity",
-                Severity::Error,
-                format!(
-                    "configured capacity {} differs from applied capacity {capacity}; drain and reapply configuration",
-                    config.scheduler.capacity
+        checks.push(check(
+            "filesystem",
+            if filesystem.supported() {
+                Severity::Ok
+            } else {
+                Severity::Error
+            },
+            filesystem.detail(),
+        ));
+        if let Some(runtime) = runtime {
+            checks.push(match runtime.validate() {
+                Ok(()) => check(
+                    "runtime",
+                    Severity::Ok,
+                    format!("{} has private permissions", runtime.root().display()),
                 ),
-            ),
-            Ok(capacity) => check(
-                "capacity",
+                Err(error) => check("runtime", Severity::Error, error.to_string()),
+            });
+            checks.push(match runtime.capacity() {
+                Ok(capacity @ 1..=2) if capacity == usize::from(config.scheduler.capacity) => check(
+                    "capacity",
+                    Severity::Ok,
+                    format!("configured and applied capacity is {capacity}"),
+                ),
+                Ok(capacity @ 1..=2) => check(
+                    "capacity",
+                    Severity::Error,
+                    format!(
+                        "configured capacity {} differs from applied capacity {capacity}; drain and reapply configuration",
+                        config.scheduler.capacity
+                    ),
+                ),
+                Ok(capacity) => check(
+                    "capacity",
+                    Severity::Error,
+                    format!("invalid capacity {capacity}"),
+                ),
+                Err(error) => check("capacity", Severity::Error, error.to_string()),
+            });
+        } else {
+            checks.push(check(
+                "runtime",
                 Severity::Error,
-                format!("invalid capacity {capacity}"),
-            ),
-            Err(error) => check("capacity", Severity::Error, error.to_string()),
-        });
+                "not initialized because the filesystem policy failed".into(),
+            ));
+        }
         checks.push(check_rtk(config, binary));
         for agent in [Agent::Claude, Agent::Cursor] {
             checks.push(check_hook(agent, binary));

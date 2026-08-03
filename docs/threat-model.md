@@ -25,6 +25,7 @@ agents. It is not intended to resist a malicious user or process running under t
 - CST-based insertion instead of whole-command regex rewriting;
 - private runtime directories and files;
 - stable per-slot lock inodes with close-on-exec behavior from Rust file opens;
+- macOS kernel `MNT_LOCAL` validation before runtime creation and scheduler admission;
 - corrupt metadata quarantines one slot rather than being deleted;
 - exact opaque job IDs and held-lock validation before cancellation;
 - no project-local configuration trust by default;

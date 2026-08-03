@@ -29,6 +29,53 @@ pub struct Runtime {
     control_namespace: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct FilesystemStatus {
+    runtime_path: PathBuf,
+    filesystem_type: Option<String>,
+    enforced: bool,
+    supported: bool,
+}
+
+impl FilesystemStatus {
+    #[must_use]
+    pub const fn supported(&self) -> bool {
+        self.supported
+    }
+
+    #[must_use]
+    pub fn detail(&self) -> String {
+        if !self.enforced {
+            return format!(
+                "{}: local-filesystem enforcement applies on macOS",
+                self.runtime_path.display()
+            );
+        }
+        let filesystem = self.filesystem_type.as_deref().unwrap_or("unknown");
+        if self.supported {
+            format!(
+                "{} is on local filesystem {filesystem}",
+                self.runtime_path.display()
+            )
+        } else {
+            format!(
+                "{} is on unsupported non-local filesystem {filesystem}",
+                self.runtime_path.display()
+            )
+        }
+    }
+
+    fn require_supported(&self) -> Result<()> {
+        if self.supported {
+            return Ok(());
+        }
+        Err(GovError::Runtime(format!(
+            "{}; scheduler admission was refused; use a local macOS volume (the default is ~/Library/Application Support/agent-gov)",
+            self.detail()
+        )))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ActiveMetadata {
     pub schema_version: u8,
@@ -75,13 +122,19 @@ impl ActiveMetadata {
 }
 
 impl Runtime {
+    pub fn filesystem_status() -> Result<FilesystemStatus> {
+        inspect_runtime_filesystem(&runtime_dir()?)
+    }
+
     pub fn initialize(config: &Config) -> Result<Self> {
         let root = runtime_dir()?;
+        inspect_runtime_filesystem(&root)?.require_supported()?;
         let app_dir = root
             .parent()
             .ok_or_else(|| GovError::Internal("runtime root has no parent".into()))?;
         create_private_dir_all(app_dir)?;
         create_private_dir(&root)?;
+        inspect_runtime_filesystem(&root)?.require_supported()?;
         for child in ["slots", "active", "waiters", "cooldowns"] {
             create_private_dir(&root.join(child))?;
         }
@@ -111,6 +164,7 @@ impl Runtime {
     }
 
     pub fn validate(&self) -> Result<()> {
+        inspect_runtime_filesystem(&self.root)?.require_supported()?;
         let metadata = fs::symlink_metadata(&self.root)?;
         if !metadata.is_dir() || metadata.file_type().is_symlink() {
             return Err(GovError::Runtime(
@@ -250,6 +304,74 @@ impl Runtime {
             Ok(true)
         }
     }
+}
+
+fn inspect_runtime_filesystem(path: &Path) -> Result<FilesystemStatus> {
+    // Hosted integration tests cannot mount remote filesystems. Release builds omit this boundary
+    // injection; it is accepted only with the existing isolated test-home override.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("AGENT_GOV_TEST_HOME").is_some()
+        && let Some(value) = std::env::var_os("AGENT_GOV_TEST_FILESYSTEM")
+    {
+        return match value.to_str() {
+            Some("local") => Ok(filesystem_status(path, "test-local", true, true)),
+            Some("remote") => Ok(filesystem_status(path, "test-remote", true, false)),
+            _ => Err(GovError::Internal(
+                "AGENT_GOV_TEST_FILESYSTEM must be local or remote".into(),
+            )),
+        };
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use nix::{mount::MntFlags, sys::statfs::statfs};
+
+        let ancestor = nearest_existing_ancestor(path)?;
+        let statistics = statfs(&ancestor).map_err(errno_to_io)?;
+        return Ok(filesystem_status(
+            path,
+            statistics.filesystem_type_name(),
+            true,
+            statistics.flags().contains(MntFlags::MNT_LOCAL),
+        ));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    Ok(FilesystemStatus {
+        runtime_path: path.to_path_buf(),
+        filesystem_type: None,
+        enforced: false,
+        supported: true,
+    })
+}
+
+fn filesystem_status(
+    path: &Path,
+    filesystem_type: &str,
+    enforced: bool,
+    supported: bool,
+) -> FilesystemStatus {
+    FilesystemStatus {
+        runtime_path: path.to_path_buf(),
+        filesystem_type: Some(filesystem_type.to_owned()),
+        enforced,
+        supported,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn nearest_existing_ancestor(path: &Path) -> Result<PathBuf> {
+    for ancestor in path.ancestors() {
+        match fs::symlink_metadata(ancestor) {
+            Ok(_) => return Ok(ancestor.to_path_buf()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(GovError::Runtime(format!(
+        "cannot find an existing ancestor for runtime path {}",
+        path.display()
+    )))
 }
 
 #[must_use]
@@ -411,4 +533,38 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
         return Err(GovError::Runtime("runtime metadata exceeds 64 KiB".into()));
     }
     Ok(serde_json::from_slice(&bytes)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::filesystem_status;
+
+    #[test]
+    fn local_filesystem_policy_accepts_kernel_local_mounts() {
+        let status = filesystem_status(Path::new("/runtime"), "apfs", true, true);
+
+        assert!(status.supported());
+        assert!(status.require_supported().is_ok());
+        assert!(status.detail().contains("local filesystem apfs"));
+    }
+
+    #[test]
+    fn local_filesystem_policy_rejects_non_local_mounts() {
+        let status = filesystem_status(Path::new("/runtime"), "smbfs", true, false);
+
+        assert!(!status.supported());
+        let error = status.require_supported().expect_err("remote mount");
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported non-local filesystem smbfs")
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("scheduler admission was refused")
+        );
+    }
 }

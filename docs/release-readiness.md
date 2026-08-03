@@ -10,6 +10,7 @@ credentials. Passing CI is necessary, but it is not treated as proof of real-wor
 | Formatting and static analysis | rustfmt, clippy with warnings denied, and actionlint in `CI` | Automated |
 | Cross-platform behavior | Rust tests on Linux, macOS arm64, and macOS Intel | Automated |
 | Scheduler limits | Multi-process capacity, queue overflow, quarantine, and signal tests | Automated |
+| Runtime filesystem boundary | Kernel-local policy units plus fail-closed CLI and `doctor` integration tests | Automated |
 | Hook safety | Claude/Cursor fixtures, unknown-field preservation, RTK failure modes, and property tests | Automated |
 | Cancellation identity | Exact job lookup, held slot lock, and private control-socket integration test | Automated |
 | Terminal path | Pseudo-TTY smoke test on both hosted Mac architectures | Automated |
@@ -28,7 +29,7 @@ These items must not be marked complete from hosted CI alone:
 - sleep/wake, clock changes, Gradle daemon behavior, and a 24-hour stress run;
 - physical IDE-terminal behavior beyond the pseudo-TTY smoke test;
 - identity-verified recovery of a live orphan process group;
-- strict rejection of unsupported network filesystems.
+- validation against real SMB/NFS/WebDAV and representative third-party network mounts.
 
 Use [the benchmark protocol](benchmark.md) and attach only aggregated, redacted measurements. Never
 commit corporate commands, transcripts, environment variables, or endpoint logs.

@@ -5,6 +5,11 @@ versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Fail-closed macOS runtime-filesystem validation based on the kernel `MNT_LOCAL` flag, including
+  `doctor` diagnostics and admission-boundary tests.
+
 ## [0.1.1] - 2026-08-02
 
 ### Added

@@ -556,7 +556,15 @@ mod tests {
 
         assert!(!status.supported());
         let error = status.require_supported().expect_err("remote mount");
-        assert!(error.to_string().contains("unsupported non-local filesystem smbfs"));
-        assert!(error.to_string().contains("scheduler admission was refused"));
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported non-local filesystem smbfs")
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("scheduler admission was refused")
+        );
     }
 }

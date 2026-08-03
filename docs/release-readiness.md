@@ -35,12 +35,23 @@ commit corporate commands, transcripts, environment variables, or endpoint logs.
 
 ## External credentials and repository settings
 
-- Apple Developer ID signing and notarization require a certificate, private key, Apple account
-  credentials, and explicit secret configuration. Releases remain checksummed and attested until
-  those credentials are available.
-- A Homebrew tap requires a separately maintained tap repository after the release format is stable.
-- The repository owner should enforce a `main` ruleset with pull requests, required `CI` and
-  `Security` checks, blocked force-push/deletion, and private vulnerability reporting.
+The repository settings were verified on 2026-08-03:
+
+- the active `Protect main` ruleset targets the default branch with no bypass actors;
+- every change to `main` requires a pull request, resolved review conversations, and an up-to-date
+  branch; approving reviews remain at zero while the repository has a single maintainer;
+- `quality`, `minimum-rust`, the Linux/macOS test matrix, and `advisory-and-license` are required
+  GitHub Actions checks;
+- branch deletion and force-pushes are blocked;
+- private vulnerability reporting, the dependency graph, Dependabot alerts, and Dependabot security
+  updates are enabled;
+- secret scanning and push protection are enabled.
+
+Apple Developer ID signing and notarization still require a certificate, private key, Apple account
+credentials, and explicit secret configuration. Releases remain checksummed and attested until those
+credentials are available.
+
+A Homebrew tap requires a separately maintained tap repository after the release format is stable.
 
 ## Promotion rule
 
